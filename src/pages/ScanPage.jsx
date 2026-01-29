@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import ImageUploader from '../components/ocr/ImageUploader';
 import CameraCapture from '../components/ocr/CameraCapture';
 import OCRProcessor from '../components/ocr/OCRProcessor';
@@ -9,11 +8,10 @@ import InvoiceDetailsForm from '../components/forms/InvoiceDetailsForm';
 import InvoicePreview, { getCalculatedAmounts } from '../components/invoice/InvoicePreview';
 import { useOCR } from '../hooks/useOCR';
 import { createEmptyInvoice, validateInvoice } from '../utils/invoiceGenerator';
-import { exportToPDF, openEmailClient } from '../utils/pdfGenerator';
+import { exportToPDF, sharePDF, openEmailClient } from '../utils/pdfGenerator';
 
 export default function ScanPage() {
-    const navigate = useNavigate();
-    const [step, setStep] = useState('upload'); // upload, processing, review, edit
+    const [step, setStep] = useState('upload');
     const [imageData, setImageData] = useState(null);
     const [showCamera, setShowCamera] = useState(false);
     const [invoice, setInvoice] = useState(createEmptyInvoice());
@@ -21,6 +19,7 @@ export default function ScanPage() {
     const [toast, setToast] = useState(null);
     const previewRef = useRef(null);
 
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
     const { isProcessing, progress, status, result, error, processImage, reset } = useOCR();
 
     const showToast = (message, type = 'success') => {
@@ -41,10 +40,7 @@ export default function ScanPage() {
         }
     }, [result, isProcessing]);
 
-    const handleImageSelect = (data) => {
-        setImageData(data);
-    };
-
+    const handleImageSelect = (data) => setImageData(data);
     const handleCameraCapture = (data) => {
         setShowCamera(false);
         setImageData(data);
@@ -57,20 +53,13 @@ export default function ScanPage() {
     };
 
     const handleConfirmOCR = (data) => {
-        // 将识别的数据合并到发票
         const newInvoice = { ...invoice };
-
         if (data.invoiceNumber) newInvoice.invoiceNumber = data.invoiceNumber;
         if (data.invoiceDate) newInvoice.invoiceDate = data.invoiceDate;
         if (data.dueDate) newInvoice.dueDate = data.dueDate;
-
         if (data.sender.companyName) newInvoice.sender = { ...newInvoice.sender, ...data.sender };
         if (data.recipient.companyName) newInvoice.recipient = { ...newInvoice.recipient, ...data.recipient };
-
-        if (data.items.length > 0) {
-            newInvoice.items = data.items;
-        }
-
+        if (data.items.length > 0) newInvoice.items = data.items;
         setInvoice(newInvoice);
         setStep('edit');
     };
@@ -85,17 +74,37 @@ export default function ScanPage() {
             showToast(validation.errors[0], 'error');
             return;
         }
-
         if (!previewRef.current) return;
 
         setIsExporting(true);
         try {
             const filename = `Invoice_${invoice.invoiceNumber}.pdf`;
             const result = await exportToPDF(previewRef.current, filename);
-            if (result.success) showToast('PDF 导出成功！', 'success');
+            if (result.success) showToast(result.shared ? 'PDF 已分享！' : 'PDF 导出成功！', 'success');
             else showToast('PDF 导出失败', 'error');
         } catch (error) {
             showToast('PDF 导出失败', 'error');
+        } finally {
+            setIsExporting(false);
+        }
+    };
+
+    const handleSharePDF = async () => {
+        const validation = validateInvoice(invoice);
+        if (!validation.isValid) {
+            showToast(validation.errors[0], 'error');
+            return;
+        }
+        if (!previewRef.current) return;
+
+        setIsExporting(true);
+        try {
+            const filename = `Invoice_${invoice.invoiceNumber}.pdf`;
+            const result = await sharePDF(previewRef.current, filename);
+            if (result.success) showToast('PDF 分享成功！', 'success');
+            else if (!result.cancelled) showToast('分享失败', 'error');
+        } catch (error) {
+            showToast('分享失败', 'error');
         } finally {
             setIsExporting(false);
         }
@@ -123,7 +132,7 @@ export default function ScanPage() {
                 📷 扫描手写发票
             </h1>
 
-            {/* 步骤 1: 上传 */}
+            {/* 上传步骤 */}
             {step === 'upload' && (
                 <div className="card fade-in" style={{ maxWidth: '600px', margin: '0 auto' }}>
                     <div className="card-header" style={{ textAlign: 'center' }}>
@@ -142,7 +151,7 @@ export default function ScanPage() {
                 </div>
             )}
 
-            {/* 步骤 2: 处理中 */}
+            {/* 处理中 */}
             {step === 'processing' && (
                 <div className="card fade-in" style={{ maxWidth: '600px', margin: '0 auto' }}>
                     <OCRProcessor
@@ -158,7 +167,7 @@ export default function ScanPage() {
                 </div>
             )}
 
-            {/* 步骤 3: 审核识别结果 */}
+            {/* 审核结果 */}
             {step === 'review' && (
                 <div style={{ maxWidth: '600px', margin: '0 auto' }}>
                     <OCRProcessor
@@ -174,7 +183,7 @@ export default function ScanPage() {
                 </div>
             )}
 
-            {/* 步骤 4: 编辑发票 */}
+            {/* 编辑发票 */}
             {step === 'edit' && (
                 <div className="workflow-container">
                     <div className="workflow-form">
@@ -195,13 +204,23 @@ export default function ScanPage() {
                         <div className="export-panel">
                             <h3 className="export-title">📤 导出发票</h3>
                             <div className="export-buttons">
-                                <button
-                                    className="btn btn-primary"
-                                    onClick={handleExportPDF}
-                                    disabled={isExporting}
-                                >
-                                    {isExporting ? '导出中...' : '📄 导出 PDF'}
-                                </button>
+                                {isMobile ? (
+                                    <button
+                                        className="btn btn-primary btn-block"
+                                        onClick={handleSharePDF}
+                                        disabled={isExporting}
+                                    >
+                                        {isExporting ? '处理中...' : '📤 分享 PDF'}
+                                    </button>
+                                ) : (
+                                    <button
+                                        className="btn btn-primary"
+                                        onClick={handleExportPDF}
+                                        disabled={isExporting}
+                                    >
+                                        {isExporting ? '导出中...' : '📄 下载 PDF'}
+                                    </button>
+                                )}
                                 <button className="btn btn-secondary" onClick={handleSendEmail}>
                                     📧 发送邮件
                                 </button>

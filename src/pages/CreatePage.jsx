@@ -4,7 +4,7 @@ import RecipientForm from '../components/forms/RecipientForm';
 import InvoiceDetailsForm from '../components/forms/InvoiceDetailsForm';
 import InvoicePreview, { getCalculatedAmounts } from '../components/invoice/InvoicePreview';
 import { createEmptyInvoice, validateInvoice } from '../utils/invoiceGenerator';
-import { exportToPDF, openEmailClient } from '../utils/pdfGenerator';
+import { exportToPDF, sharePDF, openEmailClient } from '../utils/pdfGenerator';
 
 export default function CreatePage() {
     const [invoice, setInvoice] = useState(createEmptyInvoice());
@@ -12,6 +12,9 @@ export default function CreatePage() {
     const [isExporting, setIsExporting] = useState(false);
     const [toast, setToast] = useState(null);
     const previewRef = useRef(null);
+
+    // 检测移动端
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
     const showToast = (message, type = 'success') => {
         setToast({ message, type });
@@ -57,12 +60,40 @@ export default function CreatePage() {
             const result = await exportToPDF(previewRef.current, filename);
 
             if (result.success) {
-                showToast('PDF 导出成功！', 'success');
+                showToast(result.shared ? 'PDF 已分享！' : 'PDF 导出成功！', 'success');
             } else {
-                showToast('PDF 导出失败: ' + result.error, 'error');
+                showToast('PDF 导出失败: ' + (result.error || '未知错误'), 'error');
             }
         } catch (error) {
             showToast('PDF 导出失败', 'error');
+        } finally {
+            setIsExporting(false);
+        }
+    };
+
+    const handleSharePDF = async () => {
+        const validation = validateInvoice(invoice);
+        if (!validation.isValid) {
+            showToast(validation.errors[0], 'error');
+            return;
+        }
+
+        if (!previewRef.current) return;
+
+        setIsExporting(true);
+        try {
+            const filename = `Invoice_${invoice.invoiceNumber}.pdf`;
+            const result = await sharePDF(previewRef.current, filename);
+
+            if (result.success) {
+                showToast('PDF 分享成功！', 'success');
+            } else if (result.cancelled) {
+                // 用户取消，不显示提示
+            } else {
+                showToast('分享失败: ' + (result.error || '未知错误'), 'error');
+            }
+        } catch (error) {
+            showToast('分享失败', 'error');
         } finally {
             setIsExporting(false);
         }
@@ -127,7 +158,7 @@ export default function CreatePage() {
             </div>
 
             <div className="workflow-container">
-                {/* 左侧表单 */}
+                {/* 表单区域 */}
                 <div className="workflow-form">
                     {currentStep === 1 && (
                         <SenderForm data={invoice.sender} onChange={handleSenderChange} />
@@ -161,7 +192,7 @@ export default function CreatePage() {
                     </div>
                 </div>
 
-                {/* 右侧预览 */}
+                {/* 预览区域 */}
                 <div className="workflow-preview">
                     <InvoicePreview invoice={invoice} previewRef={previewRef} />
 
@@ -169,13 +200,25 @@ export default function CreatePage() {
                     <div className="export-panel">
                         <h3 className="export-title">📤 导出发票</h3>
                         <div className="export-buttons">
-                            <button
-                                className="btn btn-primary"
-                                onClick={handleExportPDF}
-                                disabled={isExporting}
-                            >
-                                {isExporting ? '导出中...' : '📄 导出 PDF'}
-                            </button>
+                            {isMobile ? (
+                                // 移动端：显示分享按钮
+                                <button
+                                    className="btn btn-primary btn-block"
+                                    onClick={handleSharePDF}
+                                    disabled={isExporting}
+                                >
+                                    {isExporting ? '处理中...' : '📤 分享 PDF'}
+                                </button>
+                            ) : (
+                                // 桌面端：显示下载按钮
+                                <button
+                                    className="btn btn-primary"
+                                    onClick={handleExportPDF}
+                                    disabled={isExporting}
+                                >
+                                    {isExporting ? '导出中...' : '📄 下载 PDF'}
+                                </button>
+                            )}
                             <button
                                 className="btn btn-secondary"
                                 onClick={handleSendEmail}
