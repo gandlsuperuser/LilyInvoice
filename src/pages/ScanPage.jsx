@@ -8,7 +8,7 @@ import InvoiceDetailsForm from '../components/forms/InvoiceDetailsForm';
 import InvoicePreview, { getCalculatedAmounts } from '../components/invoice/InvoicePreview';
 import { useOCR } from '../hooks/useOCR';
 import { createEmptyInvoice, validateInvoice } from '../utils/invoiceGenerator';
-import { exportToPDF, sharePDF, openEmailClient } from '../utils/pdfGenerator';
+import { exportToPDF, sharePDF, emailPDFInvoice } from '../utils/pdfGenerator';
 
 export default function ScanPage() {
     const [step, setStep] = useState('upload');
@@ -110,14 +110,34 @@ export default function ScanPage() {
         }
     };
 
-    const handleSendEmail = () => {
+    const handleSendEmail = async () => {
         const validation = validateInvoice(invoice);
         if (!validation.isValid) {
             showToast(validation.errors[0], 'error');
             return;
         }
-        const calculated = getCalculatedAmounts(invoice);
-        openEmailClient(invoice, calculated);
+
+        if (!previewRef.current) return;
+
+        setIsExporting(true);
+        try {
+            const calculated = getCalculatedAmounts(invoice);
+            const result = await emailPDFInvoice(previewRef.current, invoice, calculated);
+
+            if (result.success) {
+                if (result.method === 'share') {
+                    showToast('PDF 已分享到邮件！', 'success');
+                } else {
+                    showToast('PDF 已下载，请手动附加到邮件', 'success');
+                }
+            } else if (!result.cancelled) {
+                showToast('发送失败', 'error');
+            }
+        } catch (error) {
+            showToast('发送失败', 'error');
+        } finally {
+            setIsExporting(false);
+        }
     };
 
     return (

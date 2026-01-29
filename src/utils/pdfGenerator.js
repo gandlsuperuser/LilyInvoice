@@ -30,8 +30,10 @@ async function generatePDFBlob(element) {
 /**
  * 检测是否支持 Web Share API
  */
-function canShare() {
-    return navigator.share && navigator.canShare;
+function canShareFiles() {
+    if (!navigator.share || !navigator.canShare) return false;
+    const testFile = new File(['test'], 'test.pdf', { type: 'application/pdf' });
+    return navigator.canShare({ files: [testFile] });
 }
 
 /**
@@ -42,22 +44,21 @@ export async function exportToPDF(element, filename = 'invoice.pdf') {
         const pdfBlob = await generatePDFBlob(element);
 
         // 尝试使用 Web Share API (移动端)
-        if (canShare()) {
+        if (canShareFiles()) {
             const file = new File([pdfBlob], filename, { type: 'application/pdf' });
 
-            if (navigator.canShare({ files: [file] })) {
-                try {
-                    await navigator.share({
-                        files: [file],
-                        title: 'Invoice',
-                        text: 'Here is your invoice'
-                    });
-                    return { success: true, shared: true };
-                } catch (shareError) {
-                    // 用户取消或分享失败，回退到下载
-                    if (shareError.name !== 'AbortError') {
-                        console.log('Share failed, falling back to download');
-                    }
+            try {
+                await navigator.share({
+                    files: [file],
+                    title: 'Invoice',
+                    text: 'Here is your invoice'
+                });
+                return { success: true, shared: true };
+            } catch (shareError) {
+                if (shareError.name !== 'AbortError') {
+                    console.log('Share failed, falling back to download');
+                } else {
+                    return { success: false, cancelled: true };
                 }
             }
         }
@@ -70,7 +71,6 @@ export async function exportToPDF(element, filename = 'invoice.pdf') {
 
         // 移动端 Safari 需要特殊处理
         if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-            // 在新窗口打开 PDF
             window.open(url, '_blank');
         } else {
             document.body.appendChild(link);
@@ -78,7 +78,6 @@ export async function exportToPDF(element, filename = 'invoice.pdf') {
             document.body.removeChild(link);
         }
 
-        // 延迟释放 URL
         setTimeout(() => URL.revokeObjectURL(url), 5000);
 
         return { success: true };
@@ -96,7 +95,7 @@ export async function sharePDF(element, filename = 'invoice.pdf') {
         const pdfBlob = await generatePDFBlob(element);
         const file = new File([pdfBlob], filename, { type: 'application/pdf' });
 
-        if (canShare() && navigator.canShare({ files: [file] })) {
+        if (canShareFiles()) {
             await navigator.share({
                 files: [file],
                 title: 'Invoice',
@@ -104,7 +103,6 @@ export async function sharePDF(element, filename = 'invoice.pdf') {
             });
             return { success: true };
         } else {
-            // 不支持分享，回退到下载
             return exportToPDF(element, filename);
         }
     } catch (error) {
@@ -117,7 +115,79 @@ export async function sharePDF(element, filename = 'invoice.pdf') {
 }
 
 /**
- * 打开邮件客户端发送发票
+ * 通过邮件发送 PDF（使用 Web Share API 或下载后发送）
+ */
+export async function emailPDFInvoice(element, invoice, calculated) {
+    const { recipient, invoiceNumber, currency, sender } = invoice;
+    const filename = `Invoice_${invoiceNumber}.pdf`;
+
+    try {
+        const pdfBlob = await generatePDFBlob(element);
+        const file = new File([pdfBlob], filename, { type: 'application/pdf' });
+
+        // 移动端：使用 Web Share API 分享到邮件应用
+        if (canShareFiles()) {
+            const formatCurrency = (amount) => {
+                return new Intl.NumberFormat('en-US', {
+                    style: 'currency',
+                    currency: currency || 'USD'
+                }).format(amount || 0);
+            };
+
+            const emailBody = `Dear ${recipient.companyName || 'Client'},
+
+Please find attached invoice ${invoiceNumber}.
+
+Invoice Summary:
+• Invoice Number: ${invoiceNumber}
+• Invoice Date: ${invoice.invoiceDate}
+• Due Date: ${invoice.dueDate}
+• Amount Due: ${formatCurrency(calculated.total)}
+
+Thank you for your business!
+
+Best regards,
+${sender.companyName || ''}`;
+
+            try {
+                await navigator.share({
+                    files: [file],
+                    title: `Invoice ${invoiceNumber}`,
+                    text: emailBody
+                });
+                return { success: true, method: 'share' };
+            } catch (shareError) {
+                if (shareError.name === 'AbortError') {
+                    return { success: false, cancelled: true };
+                }
+            }
+        }
+
+        // 桌面端：先下载 PDF，然后打开邮件客户端
+        const url = URL.createObjectURL(pdfBlob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+
+        // 延迟打开邮件客户端，让用户先看到下载
+        setTimeout(() => {
+            openEmailClient(invoice, calculated);
+        }, 500);
+
+        return { success: true, method: 'download_then_email' };
+    } catch (error) {
+        console.error('Email PDF error:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * 打开邮件客户端（不含附件）
  */
 export function openEmailClient(invoice, calculated) {
     const { recipient, invoiceNumber, currency, sender } = invoice;

@@ -4,7 +4,7 @@ import RecipientForm from '../components/forms/RecipientForm';
 import InvoiceDetailsForm from '../components/forms/InvoiceDetailsForm';
 import InvoicePreview, { getCalculatedAmounts } from '../components/invoice/InvoicePreview';
 import { createEmptyInvoice, validateInvoice } from '../utils/invoiceGenerator';
-import { exportToPDF, sharePDF, openEmailClient } from '../utils/pdfGenerator';
+import { exportToPDF, sharePDF, emailPDFInvoice } from '../utils/pdfGenerator';
 
 export default function CreatePage() {
     const [invoice, setInvoice] = useState(createEmptyInvoice());
@@ -61,7 +61,7 @@ export default function CreatePage() {
 
             if (result.success) {
                 showToast(result.shared ? 'PDF 已分享！' : 'PDF 导出成功！', 'success');
-            } else {
+            } else if (!result.cancelled) {
                 showToast('PDF 导出失败: ' + (result.error || '未知错误'), 'error');
             }
         } catch (error) {
@@ -87,9 +87,7 @@ export default function CreatePage() {
 
             if (result.success) {
                 showToast('PDF 分享成功！', 'success');
-            } else if (result.cancelled) {
-                // 用户取消，不显示提示
-            } else {
+            } else if (!result.cancelled) {
                 showToast('分享失败: ' + (result.error || '未知错误'), 'error');
             }
         } catch (error) {
@@ -99,15 +97,34 @@ export default function CreatePage() {
         }
     };
 
-    const handleSendEmail = () => {
+    const handleSendEmail = async () => {
         const validation = validateInvoice(invoice);
         if (!validation.isValid) {
             showToast(validation.errors[0], 'error');
             return;
         }
 
-        const calculated = getCalculatedAmounts(invoice);
-        openEmailClient(invoice, calculated);
+        if (!previewRef.current) return;
+
+        setIsExporting(true);
+        try {
+            const calculated = getCalculatedAmounts(invoice);
+            const result = await emailPDFInvoice(previewRef.current, invoice, calculated);
+
+            if (result.success) {
+                if (result.method === 'share') {
+                    showToast('PDF 已分享到邮件！', 'success');
+                } else {
+                    showToast('PDF 已下载，请手动附加到邮件', 'success');
+                }
+            } else if (!result.cancelled) {
+                showToast('发送失败', 'error');
+            }
+        } catch (error) {
+            showToast('发送失败', 'error');
+        } finally {
+            setIsExporting(false);
+        }
     };
 
     const handleReset = () => {
