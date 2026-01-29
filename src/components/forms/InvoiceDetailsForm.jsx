@@ -102,7 +102,7 @@ export default function InvoiceDetailsForm({ data, onChange }) {
                     <tbody>
                         {data.items.map((item, index) => (
                             <tr key={item.id}>
-                                <td>
+                                <td data-label="描述">
                                     <input
                                         type="text"
                                         className="form-input"
@@ -111,7 +111,7 @@ export default function InvoiceDetailsForm({ data, onChange }) {
                                         onChange={(e) => handleItemChange(index, 'description', e.target.value)}
                                     />
                                 </td>
-                                <td>
+                                <td data-label="数量">
                                     <input
                                         type="number"
                                         className="form-input"
@@ -121,17 +121,18 @@ export default function InvoiceDetailsForm({ data, onChange }) {
                                         onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
                                     />
                                 </td>
-                                <td>
+                                <td data-label="单价">
                                     <input
                                         type="number"
                                         className="form-input"
                                         min="0"
                                         step="0.01"
+                                        placeholder="0.00"
                                         value={item.unitPrice}
                                         onChange={(e) => handleItemChange(index, 'unitPrice', e.target.value)}
                                     />
                                 </td>
-                                <td>
+                                <td data-label="小计">
                                     <span className="line-item-total">
                                         {formatCurrency(calculateLineTotal(item), data.currency)}
                                     </span>

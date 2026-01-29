@@ -819,31 +819,96 @@ body::before {
 }
 
 .line-items-table .form-input {
-  padding: var(--spacing-sm) var(--spacing-md);
+  padding: var(--spacing-md);
+  font-size: 1rem;
+  min-width: 80px;
 }
 
 .line-items-table .col-description {
-  width: 40%;
+  width: 35%;
 }
 
-.line-items-table .col-quantity,
+.line-items-table .col-quantity {
+  width: 15%;
+}
+
 .line-items-table .col-price {
-  width: 18%;
+  width: 20%;
 }
 
 .line-items-table .col-total {
-  width: 18%;
+  width: 20%;
   text-align: right;
 }
 
 .line-items-table .col-actions {
-  width: 6%;
+  width: 10%;
   text-align: center;
 }
 
 .line-item-total {
   font-weight: 600;
   padding-right: var(--spacing-md);
+  white-space: nowrap;
+}
+
+/* 移动端行项目卡片式布局 */
+@media (max-width: 768px) {
+  .line-items-table {
+    display: block;
+  }
+
+  .line-items-table thead {
+    display: none;
+  }
+
+  .line-items-table tbody {
+    display: block;
+  }
+
+  .line-items-table tr {
+    display: block;
+    background: var(--bg-glass);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-md);
+    margin-bottom: var(--spacing-md);
+  }
+
+  .line-items-table td {
+    display: flex;
+    align-items: center;
+    padding: var(--spacing-sm) 0;
+    border: none;
+  }
+
+  .line-items-table td::before {
+    content: attr(data-label);
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    min-width: 70px;
+    margin-right: var(--spacing-sm);
+  }
+
+  .line-items-table .form-input {
+    flex: 1;
+    padding: var(--spacing-md);
+    font-size: 16px;
+    /* 防止 iOS 缩放 */
+  }
+
+  .line-items-table td:last-child {
+    justify-content: flex-end;
+    padding-top: var(--spacing-md);
+    border-top: 1px solid var(--border-color);
+    margin-top: var(--spacing-sm);
+  }
+
+  .line-item-total {
+    font-size: 1.125rem;
+  }
 }
 
 /* ===================================================
